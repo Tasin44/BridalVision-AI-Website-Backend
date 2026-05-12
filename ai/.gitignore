@@ -1,0 +1,27 @@
+# Virtual Environment
+# Covers common names like venv, .venv, env, and virtualenv
+venv/
+.venv/
+env/
+virtualenv/
+bin/
+include/
+lib/
+share/
+pyvenv.cfg
+
+# Environment Variables
+# Ignores the actual secrets file
+.env
+# Keep this if you use different environment suffixes
+.env.*
+# Do NOT ignore .env.example (used to show required keys without values)
+!.env.example
+
+# Python cache and metadata
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.vscode/
+.idea/
