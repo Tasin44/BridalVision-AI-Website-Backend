@@ -152,6 +152,30 @@ class TryOnView(APIView):
     """
     permission_classes = [AllowAny]
 
+    def get(self, request):
+        session_key = request.query_params.get('session_key')
+        if not session_key:
+            return Response(
+                {'error': 'session_key query param is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        generated = GeneratedImage.objects.filter(
+            session_key=session_key
+        ).order_by('-created_at').first()
+
+        if generated is None:
+            return Response(
+                {'error': 'No generated images found for this session.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = GeneratedImageSerializer(
+            generated,
+            context={'request': request}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request):
         session_key = request.data.get('session_key')
         user_image_id = request.data.get('user_image_id')
@@ -276,42 +300,63 @@ class SendImageByEmailView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        generated_image_id = serializer.validated_data['generated_image_id']
         email = serializer.validated_data['email']
 
-        # Fetch the generated image
-        try:
-            gen_img = GeneratedImage.objects.get(pk=generated_image_id)
-        except GeneratedImage.DoesNotExist:
-            return Response({'error': 'Generated image not found.'}, status=status.HTTP_404_NOT_FOUND)
+        generated_image_id = serializer.validated_data.get('generated_image_id')
+        generated_image_ids = serializer.validated_data.get('generated_image_ids')
+        if generated_image_ids is None:
+            generated_image_ids = [generated_image_id]
 
-        # Read image file from disk
-        image_path = gen_img.generated_image.path
-        if not os.path.exists(image_path):
-            return Response({'error': 'Image file missing on server.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        images = list(GeneratedImage.objects.filter(pk__in=generated_image_ids))
+        if not images:
+            return Response({'error': 'Generated images not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Build and send the email with image attached
-        mail = EmailMessage(
-            subject='Your Virtual Try-On Result',
-            body=(
-                'Hi! Please find your virtual try-on image attached. '
-                'Thank you for using our service!'
-            ),
-            to=[email],  # Recipient
-        )
-        with open(image_path, 'rb') as f:
-            mail.attach(
-                filename=os.path.basename(image_path),  # Attach with original filename
-                content=f.read(),
-                mimetype='image/jpeg'
+        found_ids = {img.pk for img in images}
+        missing_ids = [img_id for img_id in generated_image_ids if img_id not in found_ids]
+        if missing_ids:
+            return Response(
+                {'error': f'Generated images not found: {missing_ids}.'},
+                status=status.HTTP_404_NOT_FOUND
             )
+
+        base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
+        image_links = []
+        for gen_img in images:
+            if base_url:
+                image_links.append(f"{base_url}{gen_img.generated_image.url}")
+            else:
+                image_links.append(request.build_absolute_uri(gen_img.generated_image.url))
+
+        from_email = getattr(
+            settings,
+            'DEFAULT_FROM_EMAIL',
+            'BridalVision AI <no-reply@bridalvision.ai>'
+        )
+
+        links_text = '\n'.join(image_links)
+        body = (
+            'Dear Customer,\n\n'
+            'Thank you for using BridalVision AI.\n\n'
+            'Please find your virtual try-on results at the links below:\n'
+            f'{links_text}\n\n'
+            'If you need any help, please reply to this email.\n\n'
+            'Sincerely,\n'
+            'BridalVision AI'
+        )
+
+        mail = EmailMessage(
+            subject='Your BridalVision AI Try-On Results',
+            body=body,
+            from_email=from_email,
+            to=[email],
+        )
         mail.send()
 
-        # Record which email received this image
-        gen_img.email_sent_to = email
-        gen_img.save(update_fields=['email_sent_to'])  # Only update 1 column, not all
+        GeneratedImage.objects.filter(pk__in=generated_image_ids).update(
+            email_sent_to=email
+        )
 
         return Response(
-            {'message': f'Image sent successfully to {email}.'},
+            {'message': f'Images sent successfully to {email}.'},
             status=status.HTTP_200_OK
         )

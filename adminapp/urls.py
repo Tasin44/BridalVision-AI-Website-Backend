@@ -8,6 +8,7 @@ from .views import (
     ForgotPasswordView,
     VerifyOtpView,
     ResetPasswordView,
+    AdminProfileView,
 )
 from rest_framework_simplejwt.views import (
     TokenRefreshView,      # POST refresh token → returns new access token
@@ -52,4 +53,6 @@ urlpatterns = [
         name='category-image-delete'
     ),
     # DELETE → remove a single image
+
+     path('admin/profile/', AdminProfileView.as_view(), name='admin-profile'),
 ]

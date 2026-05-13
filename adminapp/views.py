@@ -19,6 +19,8 @@ from .serializers import (
     AdminTokenObtainPairSerializer,
     ForgotPasswordSerializer,
     ResetPasswordSerializer,
+    AdminProfileSerializer,
+    AdminProfileUpdateSerializer
 )
 
 # Cache key prefix — used to namespace and invalidate category caches
@@ -305,3 +307,34 @@ class ResetPasswordView(APIView):
         user.set_password(new_password)
         user.save(update_fields=['password'])
         return Response({'message': 'Password updated successfully.'}, status=status.HTTP_200_OK)
+
+class AdminProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        serializer = AdminProfileSerializer(
+            request.user,
+            context={'request': request}
+        )
+        return Response(serializer.data)
+
+    def patch(self, request):
+        serializer = AdminProfileUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return Response(
+                AdminProfileSerializer(
+                    request.user,
+                    context={'request': request}
+                ).data,
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

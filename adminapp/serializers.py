@@ -7,7 +7,7 @@ from django.utils.http import urlsafe_base64_encode
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import Category, CategoryImage
+from .models import Category, CategoryImage, AdminProfile
 
 
 class CategoryImageSerializer(serializers.ModelSerializer):
@@ -19,7 +19,7 @@ class CategoryImageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CategoryImage
-        fields = ['id', 'image_field', 'image_url', 'uploaded_at']  # Only expose needed fields
+        fields = ['id', 'image_url', 'uploaded_at']  # Only expose needed fields
 
     def get_image_url(self, obj):
         base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
@@ -179,3 +179,66 @@ class ForgotPasswordSerializer(serializers.Serializer):
 
 class ResetPasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(min_length=6)
+
+
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class AdminProfileSerializer(serializers.ModelSerializer):
+    profile_image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'profile_image',
+        ]
+
+    def get_profile_image(self, obj):
+        request = self.context.get('request')
+
+        profile = getattr(obj, 'admin_profile', None)
+        if profile and profile.profile_image:
+            base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
+            if base_url:
+                return f"{base_url}{profile.profile_image.url}"
+            if request:
+                return request.build_absolute_uri(profile.profile_image.url)
+            return profile.profile_image.url
+
+        return None
+
+
+class AdminProfileUpdateSerializer(serializers.ModelSerializer):
+    profile_image = serializers.ImageField(required=False, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'profile_image',
+        ]
+
+    def update(self, instance, validated_data):
+        profile_image = validated_data.pop('profile_image', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if profile_image is not None:
+            profile, _created = AdminProfile.objects.get_or_create(user=instance)
+            profile.profile_image = profile_image
+            profile.save(update_fields=['profile_image', 'updated_at'])
+
+        return instance
