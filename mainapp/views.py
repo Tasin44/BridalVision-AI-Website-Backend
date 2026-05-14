@@ -16,6 +16,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import AllowAny    # Public endpoints — no login needed
 from rest_framework.pagination import PageNumberPagination
 
+from aamyproject.mixins import StandardResponseMixin
 from adminapp.models import Category, CategoryImage
 from adminapp.serializers import CategorySerializer
 from .models import UserUploadedImage, GeneratedImage
@@ -46,7 +47,7 @@ class StandardPagination(PageNumberPagination):
 
 # ─── Public User Endpoints ────────────────────────────────────────────────────
 
-class UserImageUploadView(APIView):
+class UserImageUploadView(APIView,StandardResponseMixin):
     """
     POST /api/user/upload/
     User uploads their own photo for try-on.
@@ -97,15 +98,16 @@ class UserImageUploadView(APIView):
         if base_url:
             image_url = f"{base_url}{instance.image.url}"
 
-        return Response({
+        data = {
             'id': instance.pk,
             'image': image_url,
             'session_key': session_key,  # Client must save this for future requests
             'uploaded_at': instance.uploaded_at,
-        }, status=status.HTTP_201_CREATED)
+        }
+        return self.success_response(data, "Image uploaded successfully", status_code=status.HTTP_201_CREATED)
 
 
-class CategoryDressListView(APIView):
+class CategoryDressListView(StandardResponseMixin, APIView):
     """
     GET /api/categories/
     Returns all dress categories with their images (from admin dashboard).
@@ -119,7 +121,7 @@ class CategoryDressListView(APIView):
 
         if cached_data:
             # Serve from Redis — zero DB queries
-            return Response(cached_data)
+            return self.success_response(cached_data, "Categories retrieved successfully")
 
         # Cache miss: run the optimized query
         # prefetch_related('images') → 2 queries total instead of N+1
@@ -136,7 +138,7 @@ class CategoryDressListView(APIView):
         # Cache for 15 minutes (categories don't change often)
         cache.set(cache_key, response_data, timeout=60 * 15)
 
-        return Response(response_data)
+        return self.success_response(response_data, "Categories retrieved successfully")
 
 
 class TryOnView(APIView):
@@ -245,15 +247,16 @@ class TryOnView(APIView):
         if base_url:
             generated_url = f"{base_url}{generated.generated_image.url}"
 
-        return Response({
+        data = {
             'id': generated.pk,
             'generated_image': generated_url,
             'created_at': generated.created_at,
             'session_key': session_key,
-        }, status=status.HTTP_201_CREATED)
+        }
+        return self.success_response(data, "Try-on successful", status_code=status.HTTP_201_CREATED)
 
 
-class UserGeneratedImagesView(APIView):
+class UserGeneratedImagesView(StandardResponseMixin, APIView):
     """
     GET /api/user/generated/?session_key=<key>
     Returns all AI try-on results for this session (paginated).
@@ -264,9 +267,9 @@ class UserGeneratedImagesView(APIView):
     def get(self, request):
         session_key = request.query_params.get('session_key')
         if not session_key:
-            return Response(
-                {'error': 'session_key query param is required.'},
-                status=status.HTTP_400_BAD_REQUEST
+            return self.error_response(
+                message='session_key query param is required.',
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         # Filter by session — uses the DB index on session_key for speed
@@ -282,10 +285,11 @@ class UserGeneratedImagesView(APIView):
             many=True,
             context={'request': request}
         )
-        return paginator.get_paginated_response(serializer.data)
+        data = paginator.get_paginated_response(serializer.data).data
+        return self.success_response(data, "Generated images retrieved successfully")
 
 
-class SendImageByEmailView(APIView):
+class SendImageByEmailView(StandardResponseMixin, APIView):
     """
     POST /api/user/send-email/
     User provides generated_image_id + email → receives the image as email attachment.
@@ -356,7 +360,7 @@ class SendImageByEmailView(APIView):
             email_sent_to=email
         )
 
-        return Response(
-            {'message': f'Images sent successfully to {email}.'},
-            status=status.HTTP_200_OK
+        return self.success_response(
+            None,
+            message=f'Images sent successfully to {email}.'
         )

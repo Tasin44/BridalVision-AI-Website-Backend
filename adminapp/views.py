@@ -11,6 +11,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from aamyproject.mixins import StandardResponseMixin
 from .models import Category, CategoryImage
 from .serializers import (
     CategorySerializer,
@@ -43,7 +44,7 @@ def invalidate_category_cache(category_id=None):
         cache.delete(f'{CATEGORY_CACHE_PREFIX}:{category_id}')
 
 
-class CategoryListCreateView(generics.ListCreateAPIView):
+class CategoryListCreateView(StandardResponseMixin, generics.ListCreateAPIView):
     """
     GET  /admin/categories/      → List all categories with their images
     POST /admin/categories/      → Create a new category
@@ -74,7 +75,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
         """Override list() to add Redis caching for GET requests."""
         cached = cache.get(CATEGORY_LIST_CACHE_KEY)  # Try Redis first
         if cached:
-            return Response(cached)   # Return cached data instantly
+            return self.success_response(cached, "Categories retrieved successfully")
 
         # Cache miss → hit the database
         queryset = self.get_queryset()
@@ -82,24 +83,29 @@ class CategoryListCreateView(generics.ListCreateAPIView):
         data = serializer.data
 
         cache.set(CATEGORY_LIST_CACHE_KEY, data, timeout=60 * 10)  # Cache 10 min
-        return Response(data)
-
-    def perform_create(self, serializer):
-        """After creating a category, invalidate the list cache."""
-        instance = serializer.save()
-        invalidate_category_cache()  # New category → old cache is stale
+        return self.success_response(data, "Categories retrieved successfully")
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                data=serializer.errors
+            )
+        
         instance = serializer.save()
         invalidate_category_cache()
 
         read_serializer = CategorySerializer(instance, context={'request': request})
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+        return self.success_response(
+            read_serializer.data, 
+            message="Category created successfully", 
+            status_code=status.HTTP_201_CREATED
+        )
 
 
-class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+class CategoryDetailView(StandardResponseMixin, generics.RetrieveUpdateDestroyAPIView):
     """
     GET    /admin/categories/<id>/   → Get single category detail
     PUT    /admin/categories/<id>/   → Full update
@@ -126,14 +132,14 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         cached = cache.get(cache_key)
         if cached:
-            return Response(cached)
+            return self.success_response(cached, "Category detail retrieved successfully")
 
         instance = self.get_object()  # Fetches with prefetch_related
         serializer = CategorySerializer(instance, context={'request': request})
         data = serializer.data
 
         cache.set(cache_key, data, timeout=60 * 10)
-        return Response(data)
+        return self.success_response(data, "Category detail retrieved successfully")
 
     def perform_update(self, serializer):
         """Invalidate cache after update."""
@@ -144,20 +150,30 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return self.error_response(
+                message="Validation failed",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                data=serializer.errors
+            )
         instance = serializer.save()
         invalidate_category_cache(instance.category_id)
 
         read_serializer = CategorySerializer(instance, context={'request': request})
-        return Response(read_serializer.data)
+        return self.success_response(read_serializer.data, "Category updated successfully")
 
     def perform_destroy(self, instance):
         """Invalidate cache before deletion."""
         invalidate_category_cache(instance.category_id)
         instance.delete()  # CASCADE deletes all CategoryImage records too
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return self.success_response(None, "Category deleted successfully", status_code=status.HTTP_204_NO_CONTENT)
 
-class CategoryImageUploadView(APIView):
+
+class CategoryImageUploadView(StandardResponseMixin, APIView):
     """
     POST /admin/categories/<category_id>/images/
     Upload one or multiple images to an existing category.
@@ -170,17 +186,17 @@ class CategoryImageUploadView(APIView):
         try:
             category = Category.objects.get(pk=category_id)
         except Category.DoesNotExist:
-            return Response(
-                {'error': 'Category not found.'},
-                status=status.HTTP_404_NOT_FOUND
+            return self.error_response(
+                message="Category not found",
+                status_code=status.HTTP_404_NOT_FOUND
             )
 
         # 'images' is a list of uploaded files from the request
         images = request.FILES.getlist('images')
         if not images:
-            return Response(
-                {'error': 'No images provided.'},
-                status=status.HTTP_400_BAD_REQUEST
+            return self.error_response(
+                message="No images provided",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         # Bulk create all images in ONE query instead of N individual inserts
@@ -194,13 +210,14 @@ class CategoryImageUploadView(APIView):
         # Invalidate cache since category images changed
         invalidate_category_cache(category_id)
 
-        return Response(
-            {'message': f'{len(images)} image(s) uploaded successfully.'},
-            status=status.HTTP_201_CREATED
+        return self.success_response(
+            None,
+            message=f'{len(images)} image(s) uploaded successfully.',
+            status_code=status.HTTP_201_CREATED
         )
 
 
-class CategoryImageDeleteView(APIView):
+class CategoryImageDeleteView(StandardResponseMixin, APIView):
     """
     DELETE /admin/categories/images/<image_id>/
     Delete a single image from a category.
@@ -212,18 +229,19 @@ class CategoryImageDeleteView(APIView):
             image = CategoryImage.objects.select_related('category').get(pk=image_id)
             # select_related('category') fetches category in same query (no extra query needed)
         except CategoryImage.DoesNotExist:
-            return Response(
-                {'error': 'Image not found.'},
-                status=status.HTTP_404_NOT_FOUND
+            return self.error_response(
+                message='Image not found.',
+                status_code=status.HTTP_404_NOT_FOUND
             )
 
         category_id = image.category.category_id
         image.delete()
         invalidate_category_cache(category_id)  # Invalidate parent category cache
 
-        return Response(
-            {'message': 'Image deleted successfully.'},
-            status=status.HTTP_204_NO_CONTENT
+        return self.success_response(
+            None,
+            message='Image deleted successfully.',
+            status_code=status.HTTP_204_NO_CONTENT
         )
 
 
@@ -231,13 +249,17 @@ class AdminLoginView(TokenObtainPairView):
     serializer_class = AdminTokenObtainPairSerializer
 
 
-class ForgotPasswordView(APIView):
+class ForgotPasswordView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return self.error_response(
+                message="Validation failed",
+                data=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         user = serializer.validated_data['user']
         otp = get_random_string(length=6, allowed_chars='0123456789')
@@ -253,15 +275,15 @@ class ForgotPasswordView(APIView):
                 fail_silently=False,
             )
         except Exception as exc:
-            return Response(
-                {'error': f'Failed to send OTP email: {exc}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return self.error_response(
+                message=f'Failed to send OTP email: {exc}',
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        return Response({'message': 'OTP sent to email.'}, status=status.HTTP_200_OK)
+        return self.success_response(None, message='OTP sent to email.')
 
 
-class VerifyOtpView(APIView):
+class VerifyOtpView(StandardResponseMixin, APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -269,46 +291,50 @@ class VerifyOtpView(APIView):
         otp = request.data.get('otp')
 
         if not email or not otp:
-            return Response(
-                {'error': 'email and otp are required.'},
-                status=status.HTTP_400_BAD_REQUEST
+            return self.error_response(
+                message='email and otp are required.',
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         User = get_user_model()
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            return Response({'error': 'Invalid OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+            return self.error_response(message='Invalid OTP.', status_code=status.HTTP_400_BAD_REQUEST)
 
         cache_key = f"{OTP_CACHE_PREFIX}:{user.id}"
         cached_otp = cache.get(cache_key)
         if not cached_otp or cached_otp != otp:
-            return Response({'error': 'Invalid or expired OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+            return self.error_response(message='Invalid or expired OTP.', status_code=status.HTTP_400_BAD_REQUEST)
 
         cache.delete(cache_key)
 
         refresh = RefreshToken.for_user(user)
-        return Response({
+        return self.success_response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
-        }, status=status.HTTP_200_OK)
+        }, message="OTP verified successfully")
 
 
-class ResetPasswordView(APIView):
+class ResetPasswordView(StandardResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return self.error_response(
+                message="Validation failed",
+                data=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         new_password = serializer.validated_data['new_password']
 
         user = request.user
         user.set_password(new_password)
         user.save(update_fields=['password'])
-        return Response({'message': 'Password updated successfully.'}, status=status.HTTP_200_OK)
+        return self.success_response(None, message='Password updated successfully.')
 
-class AdminProfileView(APIView):
+class AdminProfileView(StandardResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -317,7 +343,7 @@ class AdminProfileView(APIView):
             request.user,
             context={'request': request}
         )
-        return Response(serializer.data)
+        return self.success_response(serializer.data, "Admin profile retrieved successfully")
 
     def patch(self, request):
         serializer = AdminProfileUpdateSerializer(
@@ -329,12 +355,14 @@ class AdminProfileView(APIView):
         if serializer.is_valid():
             serializer.save()
 
-            return Response(
-                AdminProfileSerializer(
-                    request.user,
-                    context={'request': request}
-                ).data,
-                status=status.HTTP_200_OK
-            )
+            data = AdminProfileSerializer(
+                request.user,
+                context={'request': request}
+            ).data
+            return self.success_response(data, "Admin profile updated successfully")
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self.error_response(
+            message="Validation failed",
+            data=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )

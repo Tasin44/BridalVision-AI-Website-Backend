@@ -5,6 +5,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
+
+from aamyproject.mixins import StandardResponseMixin
 from .models import AIJobLog
 from .serializers import AIJobLogSerializer
 from .config import MODEL,available_models,resolution
@@ -17,7 +19,7 @@ class StandardPagination(PageNumberPagination):
     max_page_size = 100
 
 
-class AIConfigView(APIView):
+class AIConfigView(StandardResponseMixin, APIView):
     """
     GET /aiapp/config/
     Returns current AI model config (admin only).
@@ -26,14 +28,15 @@ class AIConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response({
+        data = {
             'current_model': MODEL,
             'available_models': available_models,
             'resolution': resolution,
-        })
+        }
+        return self.success_response(data, "AI configuration retrieved successfully")
 
 
-class AIJobLogListView(APIView):
+class AIJobLogListView(StandardResponseMixin, APIView):
     """
     GET /aiapp/logs/
     Admin-only view of all AI job logs.
@@ -53,4 +56,5 @@ class AIJobLogListView(APIView):
         paginator = StandardPagination()
         paginated = paginator.paginate_queryset(logs, request)
         serializer = AIJobLogSerializer(paginated, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        data = paginator.get_paginated_response(serializer.data).data
+        return self.success_response(data, "AI job logs retrieved successfully")
