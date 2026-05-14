@@ -245,8 +245,19 @@ class CategoryImageDeleteView(StandardResponseMixin, APIView):
         )
 
 
-class AdminLoginView(TokenObtainPairView):
+class AdminLoginView(StandardResponseMixin, TokenObtainPairView):
     serializer_class = AdminTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            return self.error_response(
+                message="Login failed",
+                data=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return self.success_response(serializer.validated_data, "Login successful")
 
 
 class ForgotPasswordView(StandardResponseMixin, APIView):

@@ -41,3 +41,4 @@ replicate
 google-genai                    # Your existing AI SDK
 google-genai
 streamlit
+python-decouple

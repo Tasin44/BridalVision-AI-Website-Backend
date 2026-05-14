@@ -141,7 +141,7 @@ class CategoryDressListView(StandardResponseMixin, APIView):
         return self.success_response(response_data, "Categories retrieved successfully")
 
 
-class TryOnView(APIView):
+class TryOnView(APIView,StandardResponseMixin):
     """
     POST /api/try-on/
     Core AI endpoint: user selects their uploaded image + a dress image

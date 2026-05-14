@@ -125,24 +125,44 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
         user = None
         if identifier and '@' in identifier:
             try:
-                user = User.objects.get(email__iexact=identifier)
+                #user = User.objects.get(email__iexact=identifier)
+                user_obj = User.objects.get(email__iexact=identifier)
+                user = authenticate(
+                    username=user_obj.username,
+                    password=password
+                )
             except User.DoesNotExist:
-                user = None
+                #user = None
+                pass
 
         if user is None:
             user = authenticate(
                 username=identifier,
                 password=password
             )
-        else:
-            user = authenticate(
-                username=user.get_username(),
-                password=password
-            )
-
+        
+        '''
+        # If still no user, check if identifier is email but without @ symbol or just failed email lookup
+        if user is None and identifier:
+            # Try finding by email directly just in case it wasn't caught by the '@' check
+            try:
+                user_context = User.objects.get(email__iexact=identifier)
+                user = authenticate(
+                    username=user_context.get_username(),
+                    password=password
+                )
+            except (User.DoesNotExist, User.MultipleObjectsReturned):
+                user = None
+        
+        '''
         if not user:
             raise serializers.ValidationError('Invalid login credentials.')
+        
+        if not user.is_staff:
+            raise serializers.ValidationError("Admin access only.")
+        
 
+        '''
         data = super().validate({
             'username': user.get_username(),
             'password': password,
@@ -154,6 +174,21 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
             'email': user.email,
             'is_staff': user.is_staff,
             'is_superuser': user.is_superuser,
+        }
+        '''
+        # Generate tokens
+        refresh = self.get_token(user)
+
+        data = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "is_staff": user.is_staff,
+                "is_superuser": user.is_superuser,
+            }
         }
         return data
 

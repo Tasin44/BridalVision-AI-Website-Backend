@@ -28,3 +28,6 @@ db.sqlite3
 Thumbs.db
 .vscode/
 .idea/
+
+
+geminiaiapp/generated_image/
