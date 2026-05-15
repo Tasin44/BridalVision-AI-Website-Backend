@@ -7,8 +7,16 @@ class UserImageUploadSerializer(serializers.ModelSerializer):
     """Serializer for user image upload."""
     class Meta:
         model = UserUploadedImage
-        fields = ['id', 'image', 'uploaded_at']
+        #fields = ['id', 'image', 'uploaded_at']
+        fields = ['id', 'image', 'session_key', 'uploaded_at']
         read_only_fields = ['uploaded_at']  # Auto-set, not user-supplied
+        extra_kwargs = {
+            'session_key': {
+                'required': False,
+                'allow_null': True,
+                'allow_blank': True,
+            }
+        }
 
 
 class UserImageReadSerializer(serializers.ModelSerializer):

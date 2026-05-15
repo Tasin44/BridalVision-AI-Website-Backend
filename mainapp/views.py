@@ -164,9 +164,9 @@ class TryOnView(APIView,StandardResponseMixin):
 
         generated = GeneratedImage.objects.filter(
             session_key=session_key
-        ).order_by('-created_at').first()
+        ).order_by('-created_at')
 
-        if generated is None:
+        if not generated.exists():
             return Response(
                 {'error': 'No generated images found for this session.'},
                 status=status.HTTP_404_NOT_FOUND
@@ -174,6 +174,7 @@ class TryOnView(APIView,StandardResponseMixin):
 
         serializer = GeneratedImageSerializer(
             generated,
+            many=True,
             context={'request': request}
         )
         return Response(serializer.data, status=status.HTTP_200_OK)

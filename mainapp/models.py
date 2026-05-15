@@ -9,9 +9,15 @@ class UserUploadedImage(models.Model):
     Stores images uploaded by users (their own photo for try-on).
     No user auth — identified by a UUID session key instead.
     """
+    # session_key = models.CharField(
+    #     max_length=64,
+    #     db_index=True   # Index for fast lookups by session (used in list queries)
+    # )
     session_key = models.CharField(
         max_length=64,
-        db_index=True   # Index for fast lookups by session (used in list queries)
+        null=True,
+        blank=True,
+        db_index=True
     )
     image = models.ImageField(upload_to='user_uploads/%Y/%m/')  # Organized storage
     uploaded_at = models.DateTimeField(auto_now_add=True)
@@ -28,9 +34,15 @@ class GeneratedImage(models.Model):
     Stores the AI-generated try-on result images.
     Links the user's original image + the dress category image used.
     """
+    # session_key = models.CharField(
+    #     max_length=64,
+    #     db_index=True    # Index so we can quickly list all images for a session
+    # )
     session_key = models.CharField(
         max_length=64,
-        db_index=True    # Index so we can quickly list all images for a session
+        null=True,
+        blank=True,
+        db_index=True
     )
     user_image = models.ForeignKey(
         UserUploadedImage,
