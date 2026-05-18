@@ -53,6 +53,7 @@ urlpatterns = [
         name='category-image-delete'
     ),
     # DELETE → remove a single image
+    # PATCH (multipart) → update a single image (form field: image)
 
      path('admin/profile/', AdminProfileView.as_view(), name='admin-profile'),
 ]

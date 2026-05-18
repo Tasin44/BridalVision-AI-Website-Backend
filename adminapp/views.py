@@ -17,6 +17,7 @@ from .serializers import (
     CategorySerializer,
     CategoryWriteSerializer,
     CategoryImageUploadSerializer,
+    CategoryImageSerializer,
     AdminTokenObtainPairSerializer,
     ForgotPasswordSerializer,
     ResetPasswordSerializer,
@@ -170,7 +171,11 @@ class CategoryDetailView(StandardResponseMixin, generics.RetrieveUpdateDestroyAP
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)
-        return self.success_response(None, "Category deleted successfully", status_code=status.HTTP_204_NO_CONTENT)
+        return self.success_response(
+            None,
+            "Category deleted successfully",
+            status_code=status.HTTP_200_OK
+        )
 
 
 class CategoryImageUploadView(StandardResponseMixin, APIView):
@@ -223,6 +228,7 @@ class CategoryImageDeleteView(StandardResponseMixin, APIView):
     Delete a single image from a category.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def delete(self, request, image_id):
         try:
@@ -234,14 +240,43 @@ class CategoryImageDeleteView(StandardResponseMixin, APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        category_id = image.category.category_id
+        cat_id = image.category.category_id
         image.delete()
-        invalidate_category_cache(category_id)  # Invalidate parent category cache
+        invalidate_category_cache(cat_id)  # Invalidate parent category cache
 
         return self.success_response(
             None,
             message='Image deleted successfully.',
-            status_code=status.HTTP_204_NO_CONTENT
+            status_code=status.HTTP_200_OK
+        )
+
+    def patch(self, request, image_id):
+        try:
+            image = CategoryImage.objects.select_related('category').get(pk=image_id)
+        except CategoryImage.DoesNotExist:
+            return self.error_response(
+                message='Image not found.',
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        new_image = request.FILES.get('image') or request.data.get('image')
+        if not new_image:
+            return self.error_response(
+                message='image field is required.',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        image.image_field = new_image
+        image.save(update_fields=['image_field'])
+
+        cat_id = image.category.category_id
+        invalidate_category_cache(cat_id)
+
+        serializer = CategoryImageSerializer(image, context={'request': request})
+        return self.success_response(
+            serializer.data,
+            message='Image updated successfully.',
+            status_code=status.HTTP_200_OK
         )
 
 
@@ -291,7 +326,10 @@ class ForgotPasswordView(StandardResponseMixin, APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        return self.success_response(None, message='OTP sent to email.')
+        return self.success_response(
+            {'otp': otp},
+            message='OTP sent to email.'
+        )
 
 
 class VerifyOtpView(StandardResponseMixin, APIView):

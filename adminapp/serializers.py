@@ -91,13 +91,11 @@ class CategoryWriteSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
-        if images is not None:
-            instance.images.all().delete()
-            if images:
-                CategoryImage.objects.bulk_create([
-                    CategoryImage(category=instance, image_field=image)
-                    for image in images
-                ])
+        if images:
+            CategoryImage.objects.bulk_create([
+                CategoryImage(category=instance, image_field=image)
+                for image in images
+            ])
 
         return instance
 
@@ -116,14 +114,24 @@ class CategoryImageUploadSerializer(serializers.Serializer):
 
 class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Allow login via username or email and return user info in the response."""
+    # username = serializers.CharField(required=False)
+    # email = serializers.EmailField(required=False, write_only=True)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make username optional at the field level (parent sets it required)
+        self.fields['username'].required = False
+        self.fields['email'] = serializers.EmailField(required=False, write_only=True)
 
     def validate(self, attrs):
-        identifier = attrs.get('username')
+        identifier = attrs.get('username') or attrs.get('email')
         password = attrs.get('password')
         User = get_user_model()
 
+        if not identifier:
+            raise serializers.ValidationError({'username': 'This field is required if email is not provided.'})
+
         user = None
-        if identifier and '@' in identifier:
+        if '@' in identifier:
             try:
                 #user = User.objects.get(email__iexact=identifier)
                 user_obj = User.objects.get(email__iexact=identifier)
@@ -186,8 +194,14 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
                 "is_staff": user.is_staff,
                 "is_superuser": user.is_superuser,
+                "profile_image": AdminProfileSerializer(
+                    user,
+                    context=self.context
+                ).data.get('profile_image'),
             }
         }
         return data
