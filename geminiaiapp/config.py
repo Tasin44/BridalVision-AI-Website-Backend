@@ -8,6 +8,9 @@ BASE_DIR = Path(__file__).resolve().parent
 
 generated_images_dir = BASE_DIR / "generated_image"
 
+background_path = BASE_DIR / "templates" / "Background.jpg"
+logo_path = BASE_DIR / "templates" / "logo.png"
+
 available_models = [
     "gemini-3.1-flash-image-preview",
     "gemini-3-pro-image-preview",
