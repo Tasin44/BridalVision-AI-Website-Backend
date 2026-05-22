@@ -31,7 +31,7 @@ from .serializers import (
 import sys
 sys.path.insert(0, str(__file__).rsplit('/', 2)[0])  # Add project root to path
 from geminiaiapp.try_on import VirtualTryOn  # Your AI code — untouched
-
+from .active_campaign import add_contact_to_active_campaign
 
 # ─── Custom Pagination ────────────────────────────────────────────────────────
 
@@ -336,59 +336,7 @@ class SendImageByEmailView(StandardResponseMixin, APIView):
                 {'error': f'Generated images not found: {missing_ids}.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        # base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
-        # image_links = []
-        # for gen_img in images:
-        #     if base_url:
-        #         image_links.append(f"{base_url}{gen_img.generated_image.url}")
-        #     else:
-        #         image_links.append(request.build_absolute_uri(gen_img.generated_image.url))
-
-        # from_email = getattr(
-        #     settings,
-        #     'DEFAULT_FROM_EMAIL',
-        #     'BridalVision AI <no-reply@bridalvision.ai>'
-        # )
-
-        # links_text = '\n'.join(image_links)
-        # body = (
-        #     'Dear Customer,\n\n'
-        #     'Thank you for using BridalVision AI.\n\n'
-        #     'Please find your virtual try-on results at the links below:\n'
-        #     f'{links_text}\n\n'
-        #     'If you need any help, please reply to this email.\n\n'
-        #     'Sincerely,\n'
-        #     'BridalVision AI'
-        # )
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Wedding World <no-reply@weddingworld.de>')
-
-        # # Build dress list for email body
-        # dress_lines = []
-        # for gen_img in images:
-        #     dress = gen_img.dress_image
-        #     if dress:
-        #         brand = dress.brand_name or ''
-        #         name = dress.dress_name or ''
-        #         url = dress.web_url or ''
-        #         dress_lines.append(f"{brand} {name} {url}".strip())
-
-        # dress_list_text = "\n".join(dress_lines) if dress_lines else "–"
-
-        # body = (
-        #     "Liebe Braut,\n\n"
-        #     "vielen Dank, dass du unsere Virtual Bridal Fitting Room genutzt hast.\n\n"
-        #     "Im Anhang findest du deine virtuellen Anprobe-Ergebnisse. "
-        #     "Du hast folgende Kleider anprobiert:\n\n"
-        #     f"{dress_list_text}\n\n"
-        #     "Wir hoffen, dass diese Ergebnisse deine Vorfreude geweckt haben, "
-        #     "diese und noch viele weitere Kleider in unserem wunderschönen Store anzuprobieren. "
-        #     "Gerne helfen wir dir dabei, während eines persönlichen Brauttermins bei uns "
-        #     "dein Traumkleid zu finden. Vereinbare hier deinen Termin – wir freuen uns darauf, "
-        #     "dich schon bald in Oberhausen begrüßen zu dürfen.\n\n"
-        #     "Liebe Grüße\n"
-        #     "Team Wedding World"
-        # )
         APPOINTMENT_URL = getattr(settings, 'APPOINTMENT_URL', 'https://www.weddingworld.de/termin-buchen/terminbuchung-braut')
 
         dress_lines_html = ""
@@ -464,6 +412,11 @@ class SendImageByEmailView(StandardResponseMixin, APIView):
                 session_key=images[0].session_key,
                 defaults={'email': email}
             )
+        # ADD THIS — sends email to ActiveCampaign silently, never breaks the flow
+        try:
+            add_contact_to_active_campaign(email)
+        except Exception as e:
+            print("ActiveCampaign Error:", str(e))
         return self.success_response(
             None,
             message=f'Images sent successfully to {email}.'
