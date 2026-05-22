@@ -206,18 +206,38 @@ class CategoryImageUploadView(StandardResponseMixin, APIView):
 
         # Bulk create all images in ONE query instead of N individual inserts
         # This is DB-efficient for multiple image uploads
+        # image_objects = [
+        #     CategoryImage(category=category, image_field=img)
+        #     for img in images
+        # ]
+        brand_name = request.data.get('brand_name')
+        dress_name = request.data.get('dress_name')
+        web_url = request.data.get('web_url')
+
         image_objects = [
-            CategoryImage(category=category, image_field=img)
+            CategoryImage(
+                category=category,
+                image_field=img,
+                brand_name=brand_name,
+                dress_name=dress_name,
+                web_url=web_url
+            )
             for img in images
         ]
-        CategoryImage.objects.bulk_create(image_objects)  # Single INSERT statement
+        #CategoryImage.objects.bulk_create(image_objects)  # Single INSERT statement
+        created_images = CategoryImage.objects.bulk_create(image_objects)
 
         # Invalidate cache since category images changed
         invalidate_category_cache(category_id)
-
+        serializer = CategoryImageSerializer(
+            created_images,
+            many=True,
+            context={'request': request}
+        )
         return self.success_response(
-            None,
-            message=f'{len(images)} image(s) uploaded successfully.',
+            serializer.data,
+            # message=f'{len(images)} image(s) and detailed updated successfully.',
+            message=f'Information updated successfully.',
             status_code=status.HTTP_201_CREATED
         )
 
@@ -259,18 +279,42 @@ class CategoryImageDeleteView(StandardResponseMixin, APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        new_image = request.FILES.get('image') or request.data.get('image')
+        #new_image = request.FILES.get('image') or request.data.get('image')
+        new_image = request.FILES.get('image')
+        '''
         if not new_image:
-            return self.error_response(
+        return self.error_response(
                 message='image field is required.',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
         image.image_field = new_image
         image.save(update_fields=['image_field'])
+        '''
+        if new_image:
+            image.image_field = new_image
 
-        cat_id = image.category.category_id
-        invalidate_category_cache(cat_id)
+        image.brand_name = request.data.get(
+            'brand_name',
+            image.brand_name
+        )
+
+        image.dress_name = request.data.get(
+            'dress_name',
+            image.dress_name
+        )
+
+        image.web_url = request.data.get(
+            'web_url',
+            image.web_url
+        )
+
+        image.save()
+
+        invalidate_category_cache(image.category.category_id)
+
+        # cat_id = image.category.category_id
+        # invalidate_category_cache(cat_id)
 
         serializer = CategoryImageSerializer(image, context={'request': request})
         return self.success_response(

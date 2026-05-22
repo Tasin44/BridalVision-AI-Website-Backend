@@ -17,7 +17,7 @@ class Category(models.Model):
     updated_at = models.DateTimeField(auto_now=True)       # Updated on every save
 
     class Meta:
-        ordering = ['category_type']   # Default alphabetical ordering
+        ordering = ['-created_at']   # ← change from ['category_type'] to this
         verbose_name_plural = 'Categories'
 
     def __str__(self):
@@ -38,6 +38,10 @@ class CategoryImage(models.Model):
         upload_to='category_images/%Y/%m/',  # Organized by year/month
         # e.g. media/category_images/2026/05/dress.jpg
     )
+    brand_name=models.CharField(max_length=100,null=True,blank=True)
+    dress_name=models.CharField(max_length=100,null=True,blank=True)
+    web_url=models.URLField(max_length=500, null=True, blank=True)
+
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

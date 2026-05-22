@@ -75,3 +75,14 @@ class GeneratedImage(models.Model):
 
     def __str__(self):
         return f"GeneratedImage {self.pk}"
+    
+
+class UserSession(models.Model):
+    """Tracks email and try-on attempts per session."""
+    session_key = models.CharField(max_length=64, unique=True, db_index=True)
+    email = models.EmailField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Session {self.session_key[:8]} - {self.email}"

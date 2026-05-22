@@ -19,7 +19,7 @@ from rest_framework.pagination import PageNumberPagination
 from aamyproject.mixins import StandardResponseMixin
 from adminapp.models import Category, CategoryImage
 from adminapp.serializers import CategorySerializer
-from .models import UserUploadedImage, GeneratedImage
+from .models import UserUploadedImage, GeneratedImage,UserSession
 from .serializers import (
     UserImageUploadSerializer,
     UserImageReadSerializer,
@@ -183,7 +183,13 @@ class TryOnView(APIView,StandardResponseMixin):
         session_key = request.data.get('session_key')
         user_image_id = request.data.get('user_image_id')
         dress_image_id = request.data.get('dress_image_id')
-
+        try_count = GeneratedImage.objects.filter(session_key=session_key).count()
+        if try_count >= 3:
+            return Response(
+                {'error': 'You have reached the maximum of 3 virtual try-ons per session.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         # Validate required fields
         if not all([session_key, user_image_id, dress_image_id]):
             return Response(
@@ -214,11 +220,13 @@ class TryOnView(APIView,StandardResponseMixin):
 
         # --- Run your AI code (unchanged) ---
         vto = VirtualTryOn()
-        result_pil = vto.perform_try_on(person_path, dress_path)
+        #result_pil = vto.perform_try_on(person_path, dress_path)
+        result_pil, ai_error = vto.perform_try_on(person_path, dress_path)
 
         if result_pil is None:
             return Response(
-                {'error': 'AI try-on failed. Please try again.'},
+                #{'error': 'AI try-on failed. Please try again.'},
+                {'error': ai_error or 'AI try-on failed. Please upload a clearer photo.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -228,7 +236,8 @@ class TryOnView(APIView,StandardResponseMixin):
             buffer.write(result_pil.image_bytes)
         else:
             try:
-                result_pil.save(buffer, format='JPEG', quality=90)
+                #result_pil.save(buffer, format='JPEG', quality=90)
+                result_pil.convert("RGB").save(buffer, format='JPEG', quality=90)
             except TypeError:
                 result_pil.save(buffer)
         buffer.seek(0)
@@ -312,7 +321,11 @@ class SendImageByEmailView(StandardResponseMixin, APIView):
         if generated_image_ids is None:
             generated_image_ids = [generated_image_id]
 
-        images = list(GeneratedImage.objects.filter(pk__in=generated_image_ids))
+        #images = list(GeneratedImage.objects.filter(pk__in=generated_image_ids))
+        images = list(
+            GeneratedImage.objects.filter(pk__in=generated_image_ids)
+            .select_related('dress_image')
+        )
         if not images:
             return Response({'error': 'Generated images not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -324,44 +337,162 @@ class SendImageByEmailView(StandardResponseMixin, APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
-        image_links = []
+        # base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
+        # image_links = []
+        # for gen_img in images:
+        #     if base_url:
+        #         image_links.append(f"{base_url}{gen_img.generated_image.url}")
+        #     else:
+        #         image_links.append(request.build_absolute_uri(gen_img.generated_image.url))
+
+        # from_email = getattr(
+        #     settings,
+        #     'DEFAULT_FROM_EMAIL',
+        #     'BridalVision AI <no-reply@bridalvision.ai>'
+        # )
+
+        # links_text = '\n'.join(image_links)
+        # body = (
+        #     'Dear Customer,\n\n'
+        #     'Thank you for using BridalVision AI.\n\n'
+        #     'Please find your virtual try-on results at the links below:\n'
+        #     f'{links_text}\n\n'
+        #     'If you need any help, please reply to this email.\n\n'
+        #     'Sincerely,\n'
+        #     'BridalVision AI'
+        # )
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Wedding World <no-reply@weddingworld.de>')
+
+        # # Build dress list for email body
+        # dress_lines = []
+        # for gen_img in images:
+        #     dress = gen_img.dress_image
+        #     if dress:
+        #         brand = dress.brand_name or ''
+        #         name = dress.dress_name or ''
+        #         url = dress.web_url or ''
+        #         dress_lines.append(f"{brand} {name} {url}".strip())
+
+        # dress_list_text = "\n".join(dress_lines) if dress_lines else "–"
+
+        # body = (
+        #     "Liebe Braut,\n\n"
+        #     "vielen Dank, dass du unsere Virtual Bridal Fitting Room genutzt hast.\n\n"
+        #     "Im Anhang findest du deine virtuellen Anprobe-Ergebnisse. "
+        #     "Du hast folgende Kleider anprobiert:\n\n"
+        #     f"{dress_list_text}\n\n"
+        #     "Wir hoffen, dass diese Ergebnisse deine Vorfreude geweckt haben, "
+        #     "diese und noch viele weitere Kleider in unserem wunderschönen Store anzuprobieren. "
+        #     "Gerne helfen wir dir dabei, während eines persönlichen Brauttermins bei uns "
+        #     "dein Traumkleid zu finden. Vereinbare hier deinen Termin – wir freuen uns darauf, "
+        #     "dich schon bald in Oberhausen begrüßen zu dürfen.\n\n"
+        #     "Liebe Grüße\n"
+        #     "Team Wedding World"
+        # )
+        APPOINTMENT_URL = getattr(settings, 'APPOINTMENT_URL', 'https://www.weddingworld.de/termin-buchen/terminbuchung-braut')
+
+        dress_lines_html = ""
         for gen_img in images:
-            if base_url:
-                image_links.append(f"{base_url}{gen_img.generated_image.url}")
-            else:
-                image_links.append(request.build_absolute_uri(gen_img.generated_image.url))
+            dress = gen_img.dress_image
+            if dress:
+                brand = dress.brand_name or ''
+                name = dress.dress_name or ''
+                url = dress.web_url or '#'
+                label = f"{brand} {name}".strip() or f"Kleid #{dress.pk}"
+                # dress_lines_html += f'<p><a href="{url}">{brand} {name}</a></p>\n'
+                if dress.web_url:
+                    # web_url present → use it
+                    url = dress.web_url
+                else:
+                    # web_url missing → fallback to dress image_url
+                    base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
+                    url = (
+                        f"{base_url}{dress.image_field.url}"
+                        if base_url
+                        else request.build_absolute_uri(dress.image_field.url)
+                    )
 
-        from_email = getattr(
-            settings,
-            'DEFAULT_FROM_EMAIL',
-            'BridalVision AI <no-reply@bridalvision.ai>'
-        )
+                dress_lines_html += f'<p><a href="{url}">{label}</a></p>\n'
 
-        links_text = '\n'.join(image_links)
-        body = (
-            'Dear Customer,\n\n'
-            'Thank you for using BridalVision AI.\n\n'
-            'Please find your virtual try-on results at the links below:\n'
-            f'{links_text}\n\n'
-            'If you need any help, please reply to this email.\n\n'
-            'Sincerely,\n'
-            'BridalVision AI'
+        if not dress_lines_html:
+            dress_lines_html = '<p>–</p>'
+
+        html_body = (
+            '<p>Liebe Braut,</p>'
+            '<p>vielen Dank, dass du unsere Virtual Bridal Fitting Room genutzt hast.</p>'
+            '<p>Im Anhang findest du deine virtuellen Anprobe-Ergebnisse. '
+            'Du hast folgende Kleider anprobiert:</p>'
+            f'{dress_lines_html}'
+            '<p>Wir hoffen, dass diese Ergebnisse deine Vorfreude geweckt haben, '
+            'diese und noch viele weitere Kleider in unserem wunderschönen Store anzuprobieren. '
+            'Gerne helfen wir dir dabei, während eines persönlichen Brauttermins bei uns '
+            'dein Traumkleid zu finden. '
+            f'<a href="{APPOINTMENT_URL}">Vereinbare hier deinen Termin</a> – '
+            'wir freuen uns darauf, dich schon bald in Oberhausen begrüßen zu dürfen.</p>'
+            '<p>Liebe Grüße<br>Team Wedding World</p>'
         )
 
         mail = EmailMessage(
-            subject='Your BridalVision AI Try-On Results',
-            body=body,
+            subject='Deine virtuellen Anprobe-Ergebnisse – Wedding World',
+            body=html_body,
             from_email=from_email,
             to=[email],
         )
+        mail.content_subtype = "html"  # ← THIS was missing
+        # Attach each generated image as JPEG
+        for gen_img in images:
+            with open(gen_img.generated_image.path, 'rb') as f:
+                mail.attach(
+                    filename=os.path.basename(gen_img.generated_image.name),
+                    content=f.read(),
+                    mimetype='image/jpeg',
+                )
+
         mail.send()
 
         GeneratedImage.objects.filter(pk__in=generated_image_ids).update(
             email_sent_to=email
         )
-
+        # if images:
+        #     session_key = images[0].session_key
+        #     UserSession.objects.update_or_create(
+        #         session_key=session_key,
+        #         defaults={'email': email}
+        #     )
+        if images:
+            UserSession.objects.update_or_create(
+                session_key=images[0].session_key,
+                defaults={'email': email}
+            )
         return self.success_response(
             None,
             message=f'Images sent successfully to {email}.'
         )
+
+class CategoryDressListView(StandardResponseMixin, APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        search = request.query_params.get('search', '').strip()
+
+        # Don't cache when search is active
+        if not search:
+            cache_key = 'user:categories:list'
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                return self.success_response(cached_data, "Categories retrieved successfully")
+
+        categories = Category.objects.prefetch_related('images').all()
+
+        if search:
+            categories = categories.filter(category_type__icontains=search)
+
+        paginator = StandardPagination()
+        paginated = paginator.paginate_queryset(categories, request)
+        serializer = CategorySerializer(paginated, many=True, context={'request': request})
+        response_data = paginator.get_paginated_response(serializer.data).data
+
+        if not search:
+            cache.set(cache_key, response_data, timeout=60 * 15)
+
+        return self.success_response(response_data, "Categories retrieved successfully")

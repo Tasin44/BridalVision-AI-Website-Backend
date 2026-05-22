@@ -19,7 +19,7 @@ class CategoryImageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CategoryImage
-        fields = ['id', 'image_url', 'uploaded_at']  # Only expose needed fields
+        fields = ['id', 'image_url','brand_name','dress_name','web_url', 'uploaded_at']  # Only expose needed fields
 
     def get_image_url(self, obj):
         base_url = getattr(settings, 'BASE_URL', '').rstrip('/')
@@ -52,7 +52,7 @@ class CategoryWriteSerializer(serializers.ModelSerializer):
     Separate write serializer for create/update operations.
     Separating read vs write serializers is a clean pattern.
     """
-    images = serializers.ListField(
+    images = serializers.ListField(#images optional during creating category
         child=serializers.ImageField(),
         required=False,
         write_only=True,
@@ -61,7 +61,14 @@ class CategoryWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['category_type', 'images']
+        #fields = ['category_type', 'images']
+        fields = [
+            'category_type',
+            'images'
+            # 'brand_name',
+            # 'dress_name',
+            # 'web_url'
+        ]
 
     def validate_category_type(self, value):
         # Strip whitespace and capitalize for consistency

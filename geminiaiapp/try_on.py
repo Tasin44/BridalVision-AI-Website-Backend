@@ -24,8 +24,7 @@ class VirtualTryOn:
             image2 = optimize_for_nano_banana(garment_path)
 
             if image1 is None or image2 is None:
-                print("Error: One or both images could not be processed. Check file paths and formats.")
-                return None
+                return None, "One or both images could not be processed."
 
             # Define the configuration
             gen_config = {
@@ -47,9 +46,23 @@ class VirtualTryOn:
 
             # 3. Defensive checks on response parts
             if not response or not response.parts:
-                print("Error: The model returned an empty response.")
-                return None
+                return None, "The model returned an empty response."
+            
+            # MODIFY the response check block:
+            has_image = any(
+                hasattr(part, 'inline_data') and part.inline_data is not None
+                for part in response.parts
+            )
+            text_feedback = " ".join(
+                part.text for part in response.parts
+                if hasattr(part, 'text') and part.text
+            )
 
+            if not has_image:
+                # Return a tuple: (None, reason)
+                reason = text_feedback or "Image unclear or not suitable for try-on."
+                return None, reason
+            
             # Process and save the output
             for part in response.parts:
                 # Use getattr or check for existence to avoid attribute errors
@@ -116,90 +129,129 @@ class VirtualTryOn:
 
 
                     #way9
-                    # generated_img = Image.open(BytesIO(image_bytes)).convert("RGBA")
-                    # bg = Image.open(background_path).convert("RGBA").resize(generated_img.size)
-                    # bg.paste(generated_img, (0, 0), generated_img)
-                    # generated_img = bg
-                    # from PIL import ImageEnhance
-                    # enhancer = ImageEnhance.Brightness(generated_img)
-                    # generated_img = enhancer.enhance(1.05)  # slight warmth boost to match store lighting
-
-                    # Step 1: Remove AI background, keep full subject
-                    generated_img = remove(image_bytes)
-                    subject = Image.open(BytesIO(generated_img)).convert("RGBA")
-
-                    # Step 2: Load your background
-                    bg = Image.open(background_path).convert("RGBA")
-                    bg_w, bg_h = bg.size
-
-                    '''
-                    # Step 3: Resize subject to fit bg height fully (no crop)
-                    scale = bg_h / subject.height
-                    new_w = int(subject.width * scale)
-                    subject = subject.resize((new_w, bg_h), Image.Resampling.LANCZOS)
-
-                    # Step 4: Center subject horizontally on background
-                    x = (bg_w - new_w) // 2
-                    bg.paste(subject, (x, 0), subject)
-                    '''
-                    # Step 3: Resize subject to fit bg height fully (no crop)
-                    scale = (bg_h) / subject.height   # use 90% instead of 100%
-                    new_w = int(subject.width * scale)
-                    new_h = int(subject.height * scale)
-
-                    subject = subject.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-                    # Step 4: Center subject horizontally and vertically
-                    x = (bg_w - new_w) // 2
-                    y = (bg_h - new_h) // 2
-
-                    bg.paste(subject, (x, y), subject)
-
-
+                    generated_img = Image.open(BytesIO(image_bytes)).convert("RGBA")
+                    bg = Image.open(background_path).convert("RGBA").resize(generated_img.size)
+                    bg.paste(generated_img, (0, 0), generated_img)
                     generated_img = bg
 
+                    from PIL import ImageEnhance
+                    enhancer = ImageEnhance.Brightness(generated_img)
+                    generated_img = enhancer.enhance(1.05)  # slight warmth boost to match store lighting
+                    #generated_img = generated_img.convert("RGBA")
 
+                    # # Step 1: Remove AI background, keep full subject
+                    # generated_img = remove(image_bytes)
+                    # subject = Image.open(BytesIO(generated_img)).convert("RGBA")
+
+                    # # Step 2: Load your background
+                    # bg = Image.open(background_path).convert("RGBA")
+                    # bg_w, bg_h = bg.size
+
+                    # '''
+                    # # Step 3: Resize subject to fit bg height fully (no crop)
+                    # scale = bg_h / subject.height
+                    # new_w = int(subject.width * scale)
+                    # subject = subject.resize((new_w, bg_h), Image.Resampling.LANCZOS)
+
+                    # # Step 4: Center subject horizontally on background
+                    # x = (bg_w - new_w) // 2
+                    # bg.paste(subject, (x, 0), subject)
+                    # '''
+                    # # Step 3: Resize subject to fit bg height fully (no crop)
+                    # scale = (bg_h) / subject.height   # use 90% instead of 100%
+                    # new_w = int(subject.width * scale)
+                    # new_h = int(subject.height * scale)
+
+                    # subject = subject.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                    # # Step 4: Center subject horizontally and vertically
+                    # x = (bg_w - new_w) // 2
+                    # y = (bg_h - new_h) // 2
+
+                    # bg.paste(subject, (x, y), subject)
+
+
+                    # generated_img = bg
+
+                    
+                    '''
                     # Apply logo at bottom-right corner (black background removed)
                     logo = Image.open(logo_path).convert("RGBA")
-
                     # Remove black background from logo
                     r, g, b, a = logo.split()
                     mask = Image.eval(r, lambda x: 255 if x > 30 else 0)  # keep only non-black pixels
                     logo.putalpha(mask)
-
                     # Resize logo to reasonable size (15% of image width)
                     img_w, img_h = generated_img.size
                     logo_w = int(img_w * 0.15)
                     ratio = logo_w / logo.size[0]
                     logo_h = int(logo.size[1] * ratio)
                     logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
-
                     # Place bottom-right with padding
                     padding = 10
                     x = img_w - logo_w - padding
                     y = img_h - logo_h - padding
                     generated_img.paste(logo, (x, y), logo)
-
                     generated_img = generated_img.convert("RGB")
+                    
+                    '''
+
+                    
+                    
+                    # Apply logo as bottom banner strip
+                    logo = Image.open(logo_path).convert("RGBA")
+
+                    # Remove black background from logo
+                    r, g, b, a = logo.split()
+                    mask = Image.eval(r, lambda x: 255 if x > 30 else 0)
+                    logo.putalpha(mask)
+
+                    # Resize logo to 30% of image width, centered
+                    img_w, img_h = generated_img.size
+                    logo_w = int(img_w * 0.20)
+                    ratio = logo_w / logo.size[0]
+                    logo_h = int(logo.size[1] * ratio)
+                    logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
+
+                    # # Create dark banner strip at bottom
+                    # banner_h = logo_h + 30
+                    # banner = Image.new("RGBA", (img_w, banner_h), (20, 20, 20, 210))
+
+                    # # Paste logo centered in banner
+                    # lx = (img_w - logo_w) // 2
+                    # ly = (banner_h - logo_h) // 2
+                    # banner.paste(logo, (lx, ly), logo)
+
+                    # Paste logo at bottom-right
+                    generated_img = generated_img.convert("RGBA")
+                    x = img_w - logo_w - 150
+                    y = img_h - logo_h - 20
+                    # x = (img_w - logo_w) // 2
+                    # y = (img_h - logo_h) // 2
+                    generated_img.paste(logo, (x, y), logo)
+
+
+
+
                     # Ensure directory exists
                     if not os.path.exists(generated_images_dir):
                         os.makedirs(generated_images_dir)
                         
                     save_path = os.path.join(generated_images_dir, self.output_filename)
-                    generated_img.save(save_path)
+                    generated_img.convert("RGB").save(save_path)
                     
                     # Fixed f-string usage here
                     print(f"Success! Image saved as: {save_path}")
-                    return generated_img
+                    return generated_img,None
                 
                 elif hasattr(part, 'text') and part.text is not None:
                     print(f"Model Feedback: {part.text}")
 
         except Exception as e:
             print(f"An unexpected error occurred during try-on: {e}")
-            return None
+            return None, str(e)
         
-        return None # Return None if no image part was found in the loop
+        return None, "No image was generated."# Return None if no image part was found in the loop
 
 if __name__== "__main__":
     vr = VirtualTryOn()
