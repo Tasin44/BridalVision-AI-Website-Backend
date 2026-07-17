@@ -43,3 +43,4 @@ google-genai
 streamlit
 python-decouple
 rembg
+onnxruntime

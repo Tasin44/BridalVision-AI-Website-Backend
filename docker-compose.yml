@@ -34,18 +34,23 @@ services:
     depends_on:
       - db
 
-  # Optional Nginx Reverse Proxy Setup
+  # Nginx Reverse Proxy with SSL (Let's Encrypt via Certbot)
   nginx:
     image: nginx:latest
     container_name: nginx_proxy
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
     depends_on:
       - web
 
 volumes:
   postgres_data:
   media_data:
+  certbot_webroot:
