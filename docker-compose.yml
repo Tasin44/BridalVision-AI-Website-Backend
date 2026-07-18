@@ -47,6 +47,7 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:ro
+      - media_data:/app/media:ro
     depends_on:
       - web
 

@@ -55,6 +55,10 @@ CSRF_TRUSTED_ORIGINS = [
     'https://6zpmb4x8-8040.inc1.devtunnels.ms',
     'http://localhost:3000',
     'http://localhost:3001',
+    'https://wedding-world-delta.vercel.app',
+    'https://wedding-world-admin-dashboard.vercel.app',
+    'https://api.virtual-bridal-fitting-room.weddingworld.de',
+    'https://virtual-bridal-fitting-room.weddingworld.de',
 ]
 # Application definition
 

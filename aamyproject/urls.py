@@ -20,7 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path('django-admin/', admin.site.urls),
+    path('admin/', admin.site.urls),
 
     # Admin app: login + category management (auth required)
     path('api/admin/', include('adminapp.urls')),
