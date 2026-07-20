@@ -33,6 +33,14 @@ services:
       - .env
     depends_on:
       - db
+      - redis
+
+  redis:
+    image: redis:alpine
+    container_name: redis_cache
+    restart: always
+    ports:
+      - "6379:6379"
 
   # Nginx Reverse Proxy with SSL (Let's Encrypt via Certbot)
   nginx:
