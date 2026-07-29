@@ -183,12 +183,13 @@ class TryOnView(APIView,StandardResponseMixin):
         session_key = request.data.get('session_key')
         user_image_id = request.data.get('user_image_id')
         dress_image_id = request.data.get('dress_image_id')
-        try_count = GeneratedImage.objects.filter(session_key=session_key).count()
-        if try_count >= 3:
-            return Response(
-                {'error': 'You have reached the maximum of 3 virtual try-ons per session.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Temporarily commented out for testing
+        # try_count = GeneratedImage.objects.filter(session_key=session_key).count()
+        # if try_count >= 3:
+        #     return Response(
+        #         {'error': 'You have reached the maximum of 3 virtual try-ons per session.'},
+        #         status=status.HTTP_403_FORBIDDEN
+        #     )
         
         # Validate required fields
         if not all([session_key, user_image_id, dress_image_id]):
